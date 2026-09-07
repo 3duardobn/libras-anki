@@ -1,0 +1,25 @@
+# Ambiente virtual
+venv-rede-surdos/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Saídas geradas (mídia, banco local, decks) — nunca versionar
+output/media/
+output/media_converted/
+output/*.apkg
+output/*.db
+output/*.db-journal
+output/*.bak
+output/working_ok/
+
+# Testes / cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# App Flutter aninhado (tem repositório git próprio — não commitar aqui)
+libras_app/
