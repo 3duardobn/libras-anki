@@ -70,7 +70,7 @@ class VideoPlayerWidget(QWidget):
 
         self.video_widget = QVideoWidget(self)
         self.video_widget.setMinimumSize(280, 200)
-        self.video_widget.setStyleSheet("background-color: #000000; border-radius: 8px;")
+        self.video_widget.setStyleSheet("background-color: #000000;")
 
         self.player = QMediaPlayer(self)
         self.audio_output = QAudioOutput(self)
@@ -165,7 +165,7 @@ class VideoPlayerWidget(QWidget):
 
             self.web_view = QWebEngineView(self)
             self.web_view.setMinimumSize(280, 200)
-            self.web_view.setStyleSheet("background-color: #000000; border-radius: 8px;")
+            self.web_view.setStyleSheet("background-color: #000000;")
 
             settings = self.web_view.settings()
             settings.setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, False)
@@ -226,6 +226,9 @@ class VideoPlayerWidget(QWidget):
         if self.current_local_path:
             abs_local = os.path.abspath(self.current_local_path)
             if abs_local.lower().endswith(".gif") and self.has_webengine:
+                self.player.stop()
+                self.video_widget.hide()
+                self.web_view.show()
                 file_url = QUrl.fromLocalFile(abs_local).toString()
                 html = f"""<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body,html{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;}}img{{max-width:100%;max-height:100%;object-fit:contain;}}</style></head><body><img src="{file_url}"></body></html>"""
                 self.web_view.setHtml(html, QUrl.fromLocalFile(abs_local))
@@ -241,6 +244,9 @@ class VideoPlayerWidget(QWidget):
         # Caso 2: Se for YouTube, usa WebView com iframe embed oficial (VP9/AV1)
         yt_id = extract_youtube_id(self.current_video_url)
         if yt_id and self.has_webengine:
+            self.player.stop()
+            self.video_widget.hide()
+            self.web_view.show()
             embed_html = f"""<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body,html{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;}}iframe{{width:100%;height:100%;border:none;}}</style></head><body><iframe src="https://www.youtube-nocookie.com/embed/{yt_id}?autoplay=1&loop=1&playlist={yt_id}&rel=0" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe></body></html>"""
             self.web_view.setHtml(embed_html, QUrl("https://www.youtube-nocookie.com/"))
             self.web_info.setText("🌐 YouTube (Reprodução Online)")
@@ -260,6 +266,9 @@ class VideoPlayerWidget(QWidget):
         self.stack.setCurrentIndex(0)
 
     def _play_media_source(self, url: QUrl, info_text: str, is_local: bool):
+        if self.has_webengine and hasattr(self, 'web_view'):
+            self.web_view.hide()
+        self.video_widget.show()
         self.stack.setCurrentWidget(self.player_page)
         self.player_info.setText(info_text)
         self.btn_cache_player.setText("✓ Vídeo Local" if is_local else "💾 Baixar para Offline")
@@ -362,7 +371,9 @@ class VideoPlayerWidget(QWidget):
     def _update_time_label(self, current, total):
         cur_sec = current // 1000
         tot_sec = total // 1000
-        self.time_label.setText(f"{cur_sec // 60:02d}:{cur_sec % 60:02d} / {tot_sec // 60:02d}:{tot_sec % 60:02d}")
+        new_text = f"{cur_sec // 60:02d}:{cur_sec % 60:02d} / {tot_sec // 60:02d}:{tot_sec % 60:02d}"
+        if self.time_label.text() != new_text:
+            self.time_label.setText(new_text)
 
     def clear(self):
         if self.download_worker and self.download_worker.isRunning():
@@ -370,6 +381,8 @@ class VideoPlayerWidget(QWidget):
         self.player.stop()
         if self.has_webengine:
             self.web_view.setHtml("<html><body style='background:#000;'></body></html>")
+            self.web_view.hide()
+        self.video_widget.hide()
         self.current_video_url = ""
         self.current_local_path = ""
         self.empty_label.setText("Selecione um sinal para ver o vídeo")

@@ -1,6 +1,15 @@
 """Janela principal da aplicação gráfica desktop (PyQt6)."""
 
+import os
 import sys
+
+# Desativar aceleração de GPU problemática do Chromium no Wayland/Linux para evitar flickering/glitches na janela
+if "QTWEBENGINE_CHROMIUM_FLAGS" not in os.environ:
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-gpu --disable-gpu-compositing --no-sandbox"
+
+from PyQt6.QtCore import Qt, QCoreApplication
+# Compartilhar contextos OpenGL antes da criação de QApplication (obrigatório para QtWebEngine)
+QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
 
 # Importar QtWebEngineWidgets antes da criação de QApplication (requisito do Chromium/Qt)
 try:
@@ -8,7 +17,6 @@ try:
 except ImportError:
     pass
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QHBoxLayout, QSplitter, QStatusBar
@@ -31,6 +39,8 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         central_widget = QWidget(self)
+        central_widget.setObjectName("centralWidget")
+        central_widget.setAutoFillBackground(True)
         self.setCentralWidget(central_widget)
 
         main_layout = QHBoxLayout(central_widget)

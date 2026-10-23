@@ -1,11 +1,18 @@
 """Tema e folhas de estilo QSS para a aplicação desktop."""
 
 DARK_THEME = """
-QWidget {
+QMainWindow, QDialog, QWidget#centralWidget, QWidget#contentWidget, QScrollArea, QScrollArea > QWidget {
     background-color: #18181b;
+}
+
+QWidget {
     color: #f4f4f5;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", Ubuntu, Cantarell, Helvetica, Arial, sans-serif;
     font-size: 13px;
+}
+
+QVideoWidget {
+    background-color: #000000;
 }
 
 QSplitter::handle {

@@ -44,15 +44,8 @@ class PreviewView(QWidget):
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
-
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-
-        content_widget = QWidget()
-        layout = QVBoxLayout(content_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        main_layout.setSpacing(10)
+        self.setAutoFillBackground(True)
 
         # Cabeçalho do Sinal
         header_layout = QHBoxLayout()
@@ -65,14 +58,28 @@ class PreviewView(QWidget):
         header_layout.addWidget(self.title_label)
         header_layout.addWidget(self.source_badge)
         header_layout.addStretch()
-        layout.addLayout(header_layout)
+        main_layout.addLayout(header_layout)
 
-        # 1. Player de Vídeo
+        # 1. Player de Vídeo (Fixado no topo, fora do scroll para estabilidade visual perfeita)
         video_group = QGroupBox("Vídeo do Sinal", self)
         video_layout = QVBoxLayout(video_group)
         self.player_widget = VideoPlayerWidget(self)
         video_layout.addWidget(self.player_widget)
-        layout.addWidget(video_group)
+        main_layout.addWidget(video_group)
+
+        # Área de rolagem para os detalhes do sinal e anotações
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.viewport().setAutoFillBackground(True)
+        scroll.setAutoFillBackground(True)
+
+        content_widget = QWidget()
+        content_widget.setObjectName("contentWidget")
+        content_widget.setAutoFillBackground(True)
+        layout = QVBoxLayout(content_widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
 
         # 2. SignWriting (SWU)
         sw_group = QGroupBox("SignWriting (Escrita do Sinal)", self)
@@ -118,7 +125,7 @@ class PreviewView(QWidget):
         layout.addStretch()
 
         scroll.setWidget(content_widget)
-        main_layout.addWidget(scroll)
+        main_layout.addWidget(scroll, 1)
 
     def set_signal(self, signal_dict: dict):
         self.current_signal = signal_dict
