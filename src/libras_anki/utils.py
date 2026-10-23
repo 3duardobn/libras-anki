@@ -53,6 +53,28 @@ def sanitize_svg_for_qt(content: bytes | str) -> bytes:
                 process_element(child)
 
         process_element(root)
+
+        # Adicionar margem de respiro (padding) no viewBox para que os símbolos fiquem centralizados e não toquem as bordas
+        if "data-padded" not in root.attrib:
+            view_box = root.attrib.get("viewBox", "")
+            if view_box:
+                try:
+                    parts = [float(p) for p in view_box.split()]
+                    if len(parts) == 4:
+                        min_x, min_y, width, height = parts
+                        pad_x = max(width * 0.15, 8.0)
+                        pad_y = max(height * 0.15, 8.0)
+                        new_min_x = min_x - pad_x
+                        new_min_y = min_y - pad_y
+                        new_w = width + 2 * pad_x
+                        new_h = height + 2 * pad_y
+                        root.attrib["viewBox"] = f"{new_min_x:.1f} {new_min_y:.1f} {new_w:.1f} {new_h:.1f}"
+                        root.attrib["width"] = str(int(new_w))
+                        root.attrib["height"] = str(int(new_h))
+                        root.attrib["data-padded"] = "true"
+                except Exception:
+                    pass
+
         return ET.tostring(root, encoding="utf-8")
     except Exception:
         return content if isinstance(content, bytes) else content.encode("utf-8")

@@ -535,7 +535,7 @@ def build_deck(palavras_list, source="Ambos", deck_name="Dicionário Libras", fi
 .nightMode .example { border-left: 4px solid #34d399; color: #d1d5db; }
 .signwriting { border-left: 4px solid #8b5cf6; text-align: center; }
 .nightMode .signwriting { border-left: 4px solid #a78bfa; }
-.sw-container img { max-height: 130px; margin: 8px auto; display: block; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.08)); }
+.sw-container img { max-height: 160px; margin: 10px auto; display: block; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.08)); }
 .nightMode .sw-container img { filter: invert(0.9) hue-rotate(180deg) drop-shadow(0 2px 4px rgba(255,255,255,0.1)); }
 .media-label { font-weight: 600; font-size: 0.85em; color: #4b5563; margin-bottom: 5px; }
 .nightMode .media-label { color: #9ca3af; }
