@@ -69,20 +69,21 @@ def test_video_player_widget(qapp, tmp_path):
     player.load_signal_video("", "")
     assert player.stack.currentIndex() == 0
 
-    # Fallback mode (sem webengine)
-    player.has_webengine = False
-    player.load_signal_video("https://dicionario.ines.gov.br/video.mp4", "")
-    assert player.stack.currentIndex() == 1
-    assert not player.btn_fetch.isHidden()
+    # Teste vídeo normal direto (INES / SpreadTheSign) via player nativo (QMediaPlayer / FFmpeg)
+    with patch.object(player, '_play_media_source') as mock_play_source:
+        player.load_signal_video("https://dicionario.ines.gov.br/video.mp4", "")
+        mock_play_source.assert_called_once()
+        assert "dicionario.ines.gov.br/video.mp4" in mock_play_source.call_args[0][0].toString()
 
-    # Sinal com vídeo local em modo fallback
+    # Sinal com vídeo local em MP4
     fake_video = tmp_path / "fake.mp4"
     fake_video.write_bytes(b"dummy")
-    with patch.object(player, '_play_file') as mock_play:
+    with patch.object(player, '_play_media_source') as mock_play_source:
         player.load_signal_video("", str(fake_video))
-        mock_play.assert_called_once_with(str(fake_video))
+        mock_play_source.assert_called_once()
+        assert str(fake_video) in mock_play_source.call_args[0][0].toString()
 
-    # Modo WebEngine (com mock de QWebEngineView)
+    # Modo WebEngine para YouTube (com mock de QWebEngineView)
     player.has_webengine = True
     player.web_page = QWidget()
     player.web_view = MagicMock()
@@ -95,16 +96,12 @@ def test_video_player_widget(qapp, tmp_path):
     assert player.stack.currentWidget() == player.web_page
     assert "youtube-nocookie.com/embed/12345678901" in player.web_view.setHtml.call_args[0][0]
 
-    # Teste vídeo normal direto (INES / SpreadTheSign) via WebEngine
-    player.load_signal_video("https://media.spreadthesign.com/video/mp4/14/479149.mp4", "")
+    # Teste GIF local via WebEngine
+    fake_gif = tmp_path / "fake.gif"
+    fake_gif.write_bytes(b"dummy_gif")
+    player.load_signal_video("", str(fake_gif))
     assert player.stack.currentWidget() == player.web_page
-    assert "<video src=" in player.web_view.setHtml.call_args[0][0]
-    assert "479149.mp4" in player.web_view.setHtml.call_args[0][0]
-
-    # Teste vídeo local via WebEngine
-    player.load_signal_video("", str(fake_video))
-    assert player.stack.currentWidget() == player.web_page
-    assert "<video src=" in player.web_view.setHtml.call_args[0][0]
+    assert "<img src=" in player.web_view.setHtml.call_args[0][0]
 
     # Toggle loop
     player._toggle_loop(False)
