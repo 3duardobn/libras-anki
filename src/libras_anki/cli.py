@@ -12,7 +12,11 @@ def escolher_fonte():
     print("[3] Dicionário UFV - UFV")
     print("[4] Libras Acadêmica (UFF) - LibrasAcademicaUFF")
     print("[5] Spread the Sign - SpreadTheSign")
-    print("[6] Todas as fontes (Busca em todos)")
+    print("[6] Glossário CCB - CCB")
+    print("[7] Glossário de Economia - Economia")
+    print("[8] Glossário FESAI (TI) - FESAI")
+    print("[9] Projeto PIBIC (Design/Artes) - PIBIC")
+    print("[10] Todas as fontes (Busca em todos)")
 
     while True:
         opcao = input("\nEscolha a fonte: ").strip()
@@ -21,7 +25,11 @@ def escolher_fonte():
         elif opcao == '3': return "UFV"
         elif opcao == '4': return "LibrasAcademicaUFF"
         elif opcao == '5': return "SpreadTheSign"
-        elif opcao == '6': return "Ambos"
+        elif opcao == '6': return "CCB"
+        elif opcao == '7': return "Economia"
+        elif opcao == '8': return "FESAI"
+        elif opcao == '9': return "PIBIC"
+        elif opcao == '10': return "Ambos"
         print("Opção inválida.")
 
 
@@ -162,12 +170,13 @@ def main():
         parser = argparse.ArgumentParser(
             description="Ferramentas Libras - Gerador de Deck Anki (LLM & Humano)"
         )
-        parser.add_argument("--init-db", action="store_true", help="Inicializa o banco de dados e importa INES/UFC local.")
+        parser.add_argument("--init-db", action="store_true", help="Inicializa o banco de dados e importa bases unificadas (sinais + SignWriting).")
+        parser.add_argument("--force-reimport", action="store_true", help="Força a reimportação das bases de dados em data/.")
         parser.add_argument("--import-ufc-online", action="store_true", help="Importa UFC completo do site online.")
         parser.add_argument("--words", type=str, help="Lista de palavras separadas por vírgula.")
         parser.add_argument("--words-file", type=str, help="Caminho para arquivo CSV/TXT de palavras.")
         parser.add_argument("--tags", type=str, help="Filtra palavras por tags/categorias no banco (ex: 'Cores', 'Gramatica::ADJETIVO').")
-        parser.add_argument("--sources", type=str, default="Ambos", help="Fontes (RedeSurdos, INES, UFV, LibrasAcademicaUFF, SpreadTheSign, Ambos).")
+        parser.add_argument("--sources", type=str, default="Ambos", help="Fontes (RedeSurdos, INES, UFV, LibrasAcademicaUFF, SpreadTheSign, CCB, Economia, FESAI, PIBIC, Ambos).")
         parser.add_argument("--deck-name", type=str, default="Dicionário Libras", help="Nome do deck Anki.")
         parser.add_argument("--output", type=str, default="dicionario_libras.apkg", help="Arquivo de saída .apkg.")
         parser.add_argument("--sql", type=str, help="Executa uma instrução SQL no banco SQLite.")
@@ -195,8 +204,9 @@ def main():
                 conn.close()
             sys.exit(0)
 
-        if args.init_db:
+        if args.init_db or args.force_reimport:
             print("[LLM-Mode] Inicializando banco de dados...")
+            db.init_db(force_reimport=args.force_reimport)
             dicionario.init_dicionario()
             print("[LLM-Mode] Banco de dados inicializado com sucesso.")
             sys.exit(0)

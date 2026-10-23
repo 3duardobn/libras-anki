@@ -11,7 +11,7 @@ def mock_db_path(tmp_path):
     """Garante que todos os testes usam um banco SQLite temporário isolado."""
     temp_db = os.path.join(tmp_path, "test_libras.db")
     with patch('libras_anki.db.get_db_path', return_value=temp_db):
-        db.init_db()
+        db.init_db(import_defaults=False)
         yield temp_db
 
 def test_normalize_word():
@@ -218,4 +218,50 @@ def test_build_deck_gif(tmp_path):
         )
         assert res_gif is True
         assert apkg_gif.exists()
+
+
+def test_fontes_expanded():
+    assert "CCB" in dicionario.FONTES
+    assert "Economia" in dicionario.FONTES
+    assert "FESAI" in dicionario.FONTES
+    assert "PIBIC" in dicionario.FONTES
+
+
+def test_signwriting_lookup_and_svg(tmp_path):
+    conn = db.get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO signwriting (sign_id, term, norm_word, swu, title) VALUES (?, ?, ?, ?, ?)",
+            (10, "abacate", "abacate", "SWU_MOCK_123", "Abacate")
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    res = db.lookup_signwriting("Abacate")
+    assert res is not None
+    assert res["swu"] == "SWU_MOCK_123"
+    assert res["title"] == "Abacate"
+
+    # Teste de fallback de base_palavra para variante numerada
+    res_num = db.lookup_signwriting("Abacate1")
+    assert res_num is not None
+    assert res_num["swu"] == "SWU_MOCK_123"
+
+    # Teste de palavra inexistente
+    assert db.lookup_signwriting("PalavraInexistenteXYZ") is None
+
+    # Teste de download de SVG com mock
+    dest_svg = tmp_path / "test_sw.svg"
+    with patch("requests.get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b'<svg width="100" height="100"><g></g></svg>'
+        mock_get.return_value = mock_resp
+
+        ok = dicionario.download_signwriting_svg("SWU_MOCK_123", str(dest_svg))
+        assert ok is True
+        assert dest_svg.exists()
+        assert b"<svg" in dest_svg.read_bytes()
 

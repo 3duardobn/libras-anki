@@ -243,3 +243,205 @@ def fetch_spread_the_sign(query):
     except Exception as e:
         print(f"[Scraper SpreadTheSign] Erro ao buscar: {e}")
     return []
+
+
+def fetch_ccb(query):
+    """Busca a palavra no glossário CCB (Congregação Cristã no Brasil)."""
+    base_url = "https://congregacaocristanobrasil.org.br/libras"
+    service_url = "https://congregacaocristanobrasil.org.br/service/tss"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": base_url
+    }
+    norm_query = normalize_word(query)
+    pattern = re.compile(rf'\b{re.escape(norm_query)}\b', re.IGNORECASE)
+    results = []
+    seen = set()
+
+    try:
+        # Busca direta ou consulta de assuntos
+        for cat_id in range(1, 15):
+            payload = {"a": "assuntos", "cat": str(cat_id), "b": ""}
+            r = requests.post(service_url, data=payload, headers=headers, timeout=10)
+            if r.status_code == 200:
+                html = r.text
+                matches = re.findall(r'<a[^>]+data-video="([^"]+)"[^>]*>(.*?)<\/a>', html, re.DOTALL)
+                for video_id, raw_title in matches:
+                    clean_title = re.sub(r'<[^>]+>', '', raw_title).strip()
+                    norm_title = normalize_word(clean_title)
+                    if pattern.search(norm_title) and video_id not in seen:
+                        seen.add(video_id)
+                        results.append({
+                            "palavra": clean_title,
+                            "descricao": f"Sinal religioso / bíblico (CCB)",
+                            "video_url": f"https://www.youtube.com/watch?v={video_id}",
+                            "source_link": base_url,
+                            "fonte": "CCB"
+                        })
+    except Exception as e:
+        print(f"[Scraper CCB] Erro ao buscar: {e}")
+    return results
+
+
+def fetch_economia(query):
+    """Busca a palavra no Glossário de Economia em Libras."""
+    url = "https://raw.githubusercontent.com/glossariolibras/economia/master/index.html"
+    headers = {"User-Agent": "LibrasAnki/1.0"}
+    norm_query = normalize_word(query)
+    pattern = re.compile(rf'\b{re.escape(norm_query)}\b', re.IGNORECASE)
+    results = []
+
+    try:
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code == 200:
+            html = r.text
+            # Encontrar blocos de modal
+            modals = re.findall(r'<div class="modal-content">(.*?)<\/div>\s*<\/div>\s*<\/div>', html, re.DOTALL)
+            for modal in modals:
+                title_match = re.search(r'<h[1-3][^>]*class="modal-title"[^>]*>(.*?)<\/h[1-3]>', modal)
+                if not title_match:
+                    continue
+                title = re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
+                norm_title = normalize_word(title)
+                if pattern.search(norm_title):
+                    yt_match = re.search(r'embed\/([a-zA-Z0-9_-]+)', modal)
+                    yt_id = yt_match.group(1) if yt_match else None
+                    if yt_id:
+                        results.append({
+                            "palavra": title,
+                            "descricao": "Termo de Economia e Finanças",
+                            "video_url": f"https://www.youtube.com/watch?v={yt_id}",
+                            "source_link": f"https://glossariolibras.github.io/economia/index#{title}",
+                            "fonte": "Economia"
+                        })
+    except Exception as e:
+        print(f"[Scraper Economia] Erro ao buscar: {e}")
+    return results
+
+
+_fesai_config = {}
+
+
+def _get_fesai_credentials():
+    """Obtém dinamicamente o endpoint e a API key do AppSync no site do FESAI."""
+    global _fesai_config
+    if _fesai_config.get("api_key") and _fesai_config.get("graphql_url"):
+        return _fesai_config["graphql_url"], _fesai_config["api_key"]
+
+    base_url = "https://www.fesai.com.br/"
+    headers = {"User-Agent": "LibrasAnki/1.0"}
+    try:
+        r = requests.get(base_url, headers=headers, timeout=10)
+        r.raise_for_status()
+        match_script = re.search(r'src=["\'](main\.[a-zA-Z0-9]+\.js)["\']', r.text)
+        if match_script:
+            js_url = f"{base_url.rstrip('/')}/{match_script.group(1)}"
+            r_js = requests.get(js_url, headers=headers, timeout=10)
+            r_js.raise_for_status()
+
+            key_match = re.search(r'aws_appsync_apiKey\s*:\s*["\']([^"\']+)["\']', r_js.text)
+            endpoint_match = re.search(r'aws_appsync_graphqlEndpoint\s*:\s*["\']([^"\']+)["\']', r_js.text)
+
+            if key_match:
+                _fesai_config["api_key"] = key_match.group(1)
+            if endpoint_match:
+                _fesai_config["graphql_url"] = endpoint_match.group(1)
+    except Exception as e:
+        print(f"[Scraper FESAI] Não foi possível obter credenciais do site: {e}")
+
+    graphql_url = _fesai_config.get(
+        "graphql_url",
+        "https://5wlf3cebpnd2zn52osshpmxhdm.appsync-api.us-east-1.amazonaws.com/graphql"
+    )
+    api_key = _fesai_config.get("api_key")
+    return graphql_url, api_key
+
+
+def fetch_fesai(query):
+    """Busca a palavra no glossário FESAI (Termos técnicos de TI)."""
+    graphql_url, api_key = _get_fesai_credentials()
+    if not api_key or not graphql_url:
+        print("[Scraper FESAI] Chave de API não disponível dinamicamente.")
+        return []
+
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": api_key,
+        "User-Agent": "LibrasAnki/1.0"
+    }
+    query_graphql = """
+    query ListSinals {
+      listSinals(limit: 1000) {
+        items {
+          name
+          videos
+        }
+      }
+    }
+    """
+    norm_query = normalize_word(query)
+    pattern = re.compile(rf'\b{re.escape(norm_query)}\b', re.IGNORECASE)
+    results = []
+
+    try:
+        r = requests.post(graphql_url, json={"query": query_graphql}, headers=headers, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            items = data.get("data", {}).get("listSinals", {}).get("items", [])
+            for item in items:
+                name = (item.get("name") or "").strip()
+                norm_name = normalize_word(name)
+                if pattern.search(norm_name):
+                    videos = item.get("videos") or []
+                    video_url = videos[0] if videos else None
+                    if video_url:
+                        results.append({
+                            "palavra": name,
+                            "descricao": "Termo técnico de Tecnologia e Desenvolvimento (FESAI)",
+                            "video_url": video_url,
+                            "source_link": "https://www.fesai.com.br/",
+                            "fonte": "FESAI"
+                        })
+    except Exception as e:
+        print(f"[Scraper FESAI] Erro ao buscar: {e}")
+    return results
+
+
+def fetch_pibic(query):
+    """Busca a palavra no Projeto PIBIC (Design, Animação e Fotografia)."""
+    base_url = "http://www.pibic.progedu.com.br/libras"
+    pages = [("design", "Design"), ("animacao", "Animação"), ("fotografia", "Fotografia")]
+    headers = {"User-Agent": "LibrasAnki/1.0"}
+    norm_query = normalize_word(query)
+    pattern = re.compile(rf'\b{re.escape(norm_query)}\b', re.IGNORECASE)
+    results = []
+    seen = set()
+
+    for slug, cat_name in pages:
+        try:
+            r = requests.get(f"{base_url}/{slug}", headers=headers, timeout=15)
+            if r.status_code == 200:
+                sections = re.findall(r'<section[^>]*>(.*?)<\/section>', r.text, re.DOTALL)
+                for section in sections:
+                    yt_match = re.search(r'embed\/([a-zA-Z0-9_-]+)', section)
+                    if not yt_match:
+                        continue
+                    yt_id = yt_match.group(1)
+                    title_match = re.search(r'<h[1-3][^>]*>(.*?)<\/h[1-3]>', section)
+                    if not title_match:
+                        continue
+                    title = re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
+                    norm_title = normalize_word(title)
+                    if pattern.search(norm_title) and (title.lower(), yt_id) not in seen:
+                        seen.add((title.lower(), yt_id))
+                        results.append({
+                            "palavra": title,
+                            "descricao": f"Termo técnico de {cat_name} (PIBIC)",
+                            "video_url": f"https://www.youtube.com/watch?v={yt_id}",
+                            "source_link": f"{base_url}/{slug}",
+                            "fonte": "PIBIC"
+                        })
+        except Exception as e:
+            print(f"[Scraper PIBIC - {cat_name}] Erro ao buscar: {e}")
+    return results

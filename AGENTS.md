@@ -14,11 +14,12 @@ Licença: **GPLv3 or later** (ver `LICENSE`).
 src/libras_anki/
   cli.py            # Entrypoint CLI (modo interativo e LLM-mode)
   dicionario.py     # Lógica principal: busca, download, conversão, build_deck()
-  db.py             # SQLite: schema, CRUD, normalização, base_palavra
-  scrapers.py       # Scrapers por fonte (RedeSurdos, UFV, UFF, SpreadTheSign)
+  db.py             # SQLite: schema, CRUD, normalização, base_palavra, signwriting
+  scrapers.py       # Scrapers por fonte (RedeSurdos, UFV, UFF, SpreadTheSign, CCB, Economia, FESAI, PIBIC)
   convert_videos.py # Conversão ffmpeg → GIF (única mídia suportada)
   utils.py          # get_output_dir()
   sort_csv.py       # LEGADO: utilitário standalone, não usado pelo pipeline
+data/               # BASES LOCAIS: libras.db (26.928 sinais) e signpuddle.db (39.760 termos SWU)
 tests/
   test_dicionario.py
   test_utils.py
@@ -38,27 +39,33 @@ Sem argumentos → modo interativo. Com qualquer argumento → **LLM-mode** (nã
 
 | Argumento | Tipo | Descrição |
 | :--- | :--- | :--- |
-| `--init-db` | Flag | Inicializa o banco SQLite, aplica migrações e importa INES/UFC local. **Sempre rodar antes do primeiro uso ou após atualizar o código.** |
+| `--init-db` | Flag | Inicializa o banco SQLite, aplica migrações e importa bases de `data/` (`libras.db` e `signpuddle.db`). **Sempre rodar antes do primeiro uso ou após atualizar o código.** |
+| `--force-reimport` | Flag | Força a reimportação das bases de dados locais em `data/`. |
 | `--import-ufc-online` | Flag | Varre a API online da Rede de Surdos UFC e importa todas as postagens. |
 | `--words` | String | Lista de palavras separadas por vírgula. Busca por palavra-base (ignora variantes numeradas: "preto" acha PRETO1 e PRETO2). |
 | `--words-file` | String | Caminho para arquivo CSV/TXT com lista de palavras. |
 | `--tags` | String | Filtra por correspondência parcial de tags no banco (ex: `Cores`, `Gramatica::ADJETIVO`, `COR/FORMA`). Aceita múltiplas separadas por vírgula. |
-| `--sources` | String | Fontes: `RedeSurdos`, `INES`, `UFV`, `LibrasAcademicaUFF`, `SpreadTheSign`, `Ambos` (padrão: `Ambos`). |
+| `--sources` | String | Fontes: `RedeSurdos`, `INES`, `UFV`, `LibrasAcademicaUFF`, `SpreadTheSign`, `CCB`, `Economia`, `FESAI`, `PIBIC`, `Ambos` (padrão: `Ambos`). |
 | `--deck-name` | String | Nome interno do deck Anki. |
 | `--output` | String | Nome do arquivo `.apkg` gerado (relativo à pasta `output/`). |
 | `--sql` | String | Executa SQL direto no banco (SELECT, UPDATE, INSERT, etc.). |
 
-**Formato de saída:** sempre GIF animado. Não há flags de formato de mídia (MP4/WebM foram removidos).
+**Formato de saída:** sempre GIF animado com enriquecimento automático de **SignWriting (SWU)** quando disponível.
 
 ## Fontes de dados
 
 | Fonte | Tipo de mídia | Observações |
 | :--- | :--- | :--- |
-| INES | MP4 direto | ~5800 palavras; algumas URLs 404 no servidor deles |
-| RedeSurdos (UFC) | YouTube | Requer VPN para download estável |
-| UFV | MP4 direto | Disponível via scraping |
-| LibrasAcademicaUFF | MP4/YouTube | Disponível via scraping |
-| SpreadTheSign | MP4 direto | Disponível via scraping |
+| INES | MP4 direto | ~11.500 palavras; algumas URLs 404 no servidor deles |
+| RedeSurdos (UFC) | YouTube | ~5.200 palavras; requer VPN para download estável |
+| SpreadTheSign | MP4 direto | ~4.200 palavras; vídeos de alta qualidade |
+| LibrasAcademicaUFF | MP4/YouTube | ~2.700 palavras |
+| UFV | MP4 direto | ~2.000 palavras |
+| CCB | YouTube | 836 palavras; glossário de sinais religiosos |
+| PIBIC | YouTube | 135 palavras; artes, design, animação e fotografia |
+| FESAI | MP4 direto | 113 palavras; tecnologia e TI |
+| Economia | YouTube | 40 palavras; economia e finanças |
+| **SignPuddle** | SVG vetorial | 39.760 termos mapeados para escrita SignWriting (SWU) |
 
 ## Banco SQLite — pontos críticos
 
@@ -91,6 +98,17 @@ são pulados. Limpar `video_file` no banco força re-conversão.
 | `image_url` | URL de imagem (INES) |
 | `source_link` | Link da página de origem |
 | `tags` | Tags separadas por vírgula (hierarquia com `::`) |
+
+### Esquema da tabela `signwriting`
+
+| Coluna | Descrição |
+| :--- | :--- |
+| `id` | PK autoincrement |
+| `sign_id` | ID de origem no SignPuddle |
+| `term` | Termo em texto original |
+| `norm_word` | Termo normalizado (sem acentos, minúsculo) — indexado |
+| `swu` | Caracteres de escrita SWU (SignWriting in Unicode) |
+| `title` | Título do sinal |
 
 ### Exploração via `--sql`
 

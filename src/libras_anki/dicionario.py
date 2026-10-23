@@ -17,7 +17,11 @@ FONTES = {
     "INES": "Dicionário INES",
     "UFV": "Dicionário UFV",
     "LibrasAcademicaUFF": "Libras Acadêmica (UFF)",
-    "SpreadTheSign": "Spread the Sign"
+    "SpreadTheSign": "Spread the Sign",
+    "CCB": "Glossário CCB (Religioso)",
+    "Economia": "Glossário de Economia",
+    "FESAI": "Glossário FESAI (TI)",
+    "PIBIC": "Projeto PIBIC (Design/Artes)"
 }
 
 
@@ -224,6 +228,14 @@ def search_word_in_all_sources(word, source="Ambos"):
             online_res = scrapers.fetch_uff(word)
         elif f == "SpreadTheSign":
             online_res = scrapers.fetch_spread_the_sign(word)
+        elif f == "CCB":
+            online_res = scrapers.fetch_ccb(word)
+        elif f == "Economia":
+            online_res = scrapers.fetch_economia(word)
+        elif f == "FESAI":
+            online_res = scrapers.fetch_fesai(word)
+        elif f == "PIBIC":
+            online_res = scrapers.fetch_pibic(word)
 
         if online_res:
             print(f"  [→] Encontrados {len(online_res)} resultados online.")
@@ -239,6 +251,26 @@ def search_word_in_all_sources(word, source="Ambos"):
             results.extend(db.lookup_sinal(f, word_norm))
 
     return results
+
+
+def download_signwriting_svg(swu, dest_path):
+    if not swu:
+        return False
+    if os.path.exists(dest_path):
+        return True
+
+    headers = {"User-Agent": "LibrasAnki/1.0 (SignWriting Generator)"}
+    url = f"https://signpuddle.com/server/swu/svg/{requests.utils.quote(swu, safe='')}"
+    try:
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code == 200 and r.content.lstrip().startswith(b"<svg"):
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            with open(dest_path, "wb") as f:
+                f.write(r.content)
+            return True
+    except Exception as e:
+        print(f"  [SignWriting] Erro ao baixar SVG: {e}")
+    return False
 
 
 def download_video(video_url, dest_path):
@@ -379,14 +411,15 @@ def build_deck(palavras_list, source="Ambos", deck_name="Dicionário Libras", fi
     print(f"\n[Dicionário] Gerando pacote Anki...")
 
     deck_id = int(hashlib.md5(deck_name.encode()).hexdigest()[:16], 16) % (1 << 31)
-    model_id = int(hashlib.md5(b"DicionarioLibrasGIF_v1").hexdigest()[:16], 16) % (1 << 31)
+    model_id = int(hashlib.md5(b"DicionarioLibrasGIF_v2").hexdigest()[:16], 16) % (1 << 31)
 
     model = genanki.Model(
         model_id,
-        'Dicionário Libras - GIF v1',
+        'Dicionário Libras - GIF v2',
         fields=[
             {'name': 'Palavra'},
             {'name': 'Video'},
+            {'name': 'SignWriting'},
             {'name': 'Significado'},
             {'name': 'Exemplo'},
             {'name': 'Fonte'},
@@ -405,7 +438,13 @@ def build_deck(palavras_list, source="Ambos", deck_name="Dicionário Libras", fi
                     '  <div class="main-word front-preview">{{Palavra}}</div>'
                     '  <hr id="answer">'
                     '  {{Video}}'
-                    '  <br><br>'
+                    '  {{#SignWriting}}'
+                    '  <div class="box signwriting">'
+                    '    <div class="media-label">SignWriting (Escrita do Sinal)</div>'
+                    '    <div class="sw-container">{{SignWriting}}</div>'
+                    '  </div>'
+                    '  {{/SignWriting}}'
+                    '  <br>'
                     '  {{Significado}}'
                     '  {{#Exemplo}}<br>{{Exemplo}}{{/Exemplo}}'
                     '  <br>'
@@ -459,6 +498,10 @@ def build_deck(palavras_list, source="Ambos", deck_name="Dicionário Libras", fi
 .nightMode .meaning { border-left: 4px solid #60a5fa; }
 .example { border-left: 4px solid #10b981; font-style: italic; color: #4b5563; }
 .nightMode .example { border-left: 4px solid #34d399; color: #d1d5db; }
+.signwriting { border-left: 4px solid #8b5cf6; text-align: center; }
+.nightMode .signwriting { border-left: 4px solid #a78bfa; }
+.sw-container img { max-height: 130px; margin: 8px auto; display: block; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.08)); }
+.nightMode .sw-container img { filter: invert(0.9) hue-rotate(180deg) drop-shadow(0 2px 4px rgba(255,255,255,0.1)); }
 .media-label { font-weight: 600; font-size: 0.85em; color: #4b5563; margin-bottom: 5px; }
 .nightMode .media-label { color: #9ca3af; }
 """
@@ -588,13 +631,26 @@ def build_deck(palavras_list, source="Ambos", deck_name="Dicionário Libras", fi
                     f'</div>'
                 )
 
+            # Buscar SignWriting (SWU) correspondente
+            signwriting_html = ""
+            sw_info = db.lookup_signwriting(base_key)
+            if sw_info and sw_info.get("swu"):
+                swu = sw_info["swu"]
+                sw_clean_name = f"sw_{base_key}.svg"
+                sw_abs_path = os.path.join(output_base, "media", sw_clean_name)
+                if download_signwriting_svg(swu, sw_abs_path):
+                    if os.path.exists(sw_abs_path):
+                        if sw_abs_path not in media_files:
+                            media_files.append(sw_abs_path)
+                        signwriting_html = f'<img src="{sw_clean_name}" class="signwriting-svg" alt="SignWriting {palavra_display}">'
+
             fontes_html = ", ".join(fontes_nomes)
             links_html = " | ".join(links_list)
             tags_list_anki = [t.replace(' ', '_') for t in todas_tags]
 
             note = genanki.Note(
                 model=model,
-                fields=[palavra_display, video_html, significados_html, exemplos_html, fontes_html, links_html],
+                fields=[palavra_display, video_html, signwriting_html, significados_html, exemplos_html, fontes_html, links_html],
                 tags=tags_list_anki
             )
             deck.add_note(note)

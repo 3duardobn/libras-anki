@@ -5,6 +5,11 @@ import csv
 import re
 
 
+def get_data_dir():
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(root_dir, "data")
+
+
 def get_db_path():
     from libras_anki.utils import get_output_dir
     output_dir = get_output_dir(None)
@@ -33,7 +38,7 @@ def get_base_palavra(normalized):
     return base if base else normalized
 
 
-def init_db():
+def init_db(force_reimport=False, import_defaults=True):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -71,7 +76,152 @@ def init_db():
             SET base_palavra = LOWER(TRIM(RTRIM(normalized_palavra, '0123456789')))
             WHERE base_palavra IS NULL OR base_palavra = ''
         """)
+
+        # Tabela de SignWriting (SWU)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS signwriting (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sign_id INTEGER,
+                term TEXT,
+                norm_word TEXT,
+                swu TEXT,
+                title TEXT
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sw_norm ON signwriting(norm_word)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sw_sign_id ON signwriting(sign_id)")
+
+        cursor.execute("SELECT COUNT(*) FROM sinais")
+        sinais_count = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM signwriting")
+        sw_count = cursor.fetchone()[0]
+
         conn.commit()
+    finally:
+        conn.close()
+
+    if import_defaults:
+        if force_reimport or sinais_count == 0:
+            import_unified_db_data()
+
+        if force_reimport or sw_count == 0:
+            import_signwriting_data()
+
+
+def import_unified_db_data(source_path=None):
+    if not source_path:
+        source_path = os.path.join(get_data_dir(), "libras.db")
+    if not os.path.exists(source_path):
+        return 0
+
+    print(f"[DB] Importando sinais unificados de {source_path}...")
+    src_conn = sqlite3.connect(source_path)
+    try:
+        src_cur = src_conn.cursor()
+        rows = src_cur.execute(
+            "SELECT id, norm_word, title, source, description, exemplo, libras, video_url, image_url, youtube_id, link FROM signs"
+        ).fetchall()
+    finally:
+        src_conn.close()
+
+    if not rows:
+        return 0
+
+    batch = []
+    for r in rows:
+        fonte = r[3] or ""
+        palavra = r[2] or ""
+        norm = r[1] or normalize_word(palavra)
+        base = get_base_palavra(norm)
+        desc = r[4] or ""
+        exemplo = r[5] or ""
+        libras = r[6] or ""
+        v_url = r[7] or ""
+        if not v_url and r[9]:
+            v_url = f"https://www.youtube.com/watch?v={r[9]}"
+        img_url = r[8] or ""
+        src_link = r[10] or ""
+        tags = fonte
+        batch.append((fonte, palavra, norm, base, desc, libras, exemplo, v_url, "", img_url, src_link, tags))
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.executemany("""
+            INSERT OR REPLACE INTO sinais (fonte, palavra, normalized_palavra, base_palavra, descricao, libras, exemplo, video_url, video_file, image_url, source_link, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, batch)
+        conn.commit()
+    finally:
+        conn.close()
+
+    print(f"[DB] Sucesso: {len(batch)} sinais importados da base unificada.")
+    return len(batch)
+
+
+def import_signwriting_data(source_path=None):
+    if not source_path:
+        source_path = os.path.join(get_data_dir(), "signpuddle.db")
+    if not os.path.exists(source_path):
+        return 0
+
+    print(f"[DB] Importando dados de SignWriting de {source_path}...")
+    sp_conn = sqlite3.connect(source_path)
+    try:
+        sp_cur = sp_conn.cursor()
+        sw_rows = sp_cur.execute("""
+            SELECT t.sign_id, t.term, t.term_norm, s.swu, s.title
+            FROM terms t
+            JOIN signs s ON t.sign_id = s.id
+            WHERE s.swu IS NOT NULL AND s.swu != ''
+        """).fetchall()
+    finally:
+        sp_conn.close()
+
+    if not sw_rows:
+        return 0
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.executemany("""
+            INSERT OR IGNORE INTO signwriting (sign_id, term, norm_word, swu, title)
+            VALUES (?, ?, ?, ?, ?)
+        """, sw_rows)
+        conn.commit()
+    finally:
+        conn.close()
+
+    print(f"[DB] Sucesso: {len(sw_rows)} registros de SignWriting importados.")
+    return len(sw_rows)
+
+
+def lookup_signwriting(palavra):
+    """Retorna dados de SignWriting (swu, title) para uma dada palavra."""
+    if not palavra:
+        return None
+    norm = normalize_word(palavra)
+    base = get_base_palavra(norm)
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT swu, title FROM signwriting WHERE norm_word = ? AND swu IS NOT NULL AND swu != '' LIMIT 1",
+            (norm,)
+        )
+        row = cur.fetchone()
+        if not row and base != norm:
+            cur.execute(
+                "SELECT swu, title FROM signwriting WHERE norm_word = ? AND swu IS NOT NULL AND swu != '' LIMIT 1",
+                (base,)
+            )
+            row = cur.fetchone()
+
+        if row:
+            return {"swu": row["swu"], "title": row["title"]}
+        return None
     finally:
         conn.close()
 
