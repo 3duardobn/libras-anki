@@ -1,7 +1,8 @@
-"""Widget de reprodução de vídeo integrado com controles de reprodução, loop e suporte a YouTube Embed via WebView."""
+"""Widget de reprodução de vídeo integrado com controles de reprodução, loop e suporte a WebView (YouTube Embed + HTML5 Video)."""
 
 import os
 import re
+import hashlib
 from PyQt6.QtCore import QUrl, Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
@@ -12,6 +13,7 @@ from PyQt6.QtMultimediaWidgets import QVideoWidget
 
 try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
+    from PyQt6.QtWebEngineCore import QWebEngineSettings
     HAS_WEBENGINE = True
 except ImportError:
     HAS_WEBENGINE = False
@@ -136,7 +138,7 @@ class VideoPlayerWidget(QWidget):
         self.empty_label.setStyleSheet("color: #71717a; font-style: italic;")
         empty_layout.addWidget(self.empty_label)
 
-        # 4. Tela WebView para Embed do YouTube
+        # 4. Tela WebView para Reprodução Integrada (YouTube Embed + Vídeos Diretos)
         is_offscreen = os.environ.get("QT_QPA_PLATFORM") == "offscreen"
         self.has_webengine = HAS_WEBENGINE and not is_offscreen
         if self.has_webengine:
@@ -148,12 +150,19 @@ class VideoPlayerWidget(QWidget):
             self.web_view = QWebEngineView(self)
             self.web_view.setMinimumSize(280, 200)
             self.web_view.setStyleSheet("background-color: #000000; border-radius: 8px;")
+
+            settings = self.web_view.settings()
+            settings.setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, False)
+            settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+            settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+            settings.setAttribute(QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True)
+
             web_layout.addWidget(self.web_view)
 
             web_bar = QHBoxLayout()
-            web_info = QLabel("🌐 YouTube Embed (Reprodução Online)", self)
-            web_info.setStyleSheet("color: #a1a1aa; font-size: 11px;")
-            web_bar.addWidget(web_info)
+            self.web_info = QLabel("🌐 Reprodução Web", self)
+            self.web_info.setStyleSheet("color: #a1a1aa; font-size: 11px;")
+            web_bar.addWidget(self.web_info)
             web_bar.addStretch()
 
             self.btn_cache_yt = QPushButton("💾 Baixar para Offline", self)
@@ -196,36 +205,50 @@ class VideoPlayerWidget(QWidget):
                 self.current_local_path = p
                 break
 
+        # 2. Reprodução via WebEngine (YouTube ou vídeos normais/locais)
+        if self.has_webengine:
+            if self.current_local_path:
+                abs_local = os.path.abspath(self.current_local_path)
+                file_url = QUrl.fromLocalFile(abs_local).toString()
+                if abs_local.lower().endswith(".gif"):
+                    html = f"""<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body,html{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;}}img{{max-width:100%;max-height:100%;object-fit:contain;}}</style></head><body><img src="{file_url}"></body></html>"""
+                else:
+                    html = f"""<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body,html{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;}}video{{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;background:#000;}}</style></head><body><video src="{file_url}" autoplay loop controls playsinline></video></body></html>"""
+                self.web_view.setHtml(html, QUrl.fromLocalFile(abs_local))
+                self.web_info.setText("📁 Arquivo Local (Offline)")
+                self.btn_cache_yt.setText("✓ Vídeo Local")
+                self.btn_cache_yt.setEnabled(False)
+                self.stack.setCurrentWidget(self.web_page)
+                return
+
+            yt_id = extract_youtube_id(self.current_video_url)
+            if yt_id:
+                embed_html = f"""<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body,html{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;}}iframe{{width:100%;height:100%;border:none;}}</style></head><body><iframe src="https://www.youtube-nocookie.com/embed/{yt_id}?autoplay=1&loop=1&playlist={yt_id}&rel=0" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe></body></html>"""
+                self.web_view.setHtml(embed_html, QUrl("https://www.youtube-nocookie.com/"))
+                self.web_info.setText("🌐 YouTube (Reprodução Online)")
+                self.btn_cache_yt.setText("💾 Baixar para Offline")
+                self.btn_cache_yt.setEnabled(True)
+                self.stack.setCurrentWidget(self.web_page)
+                return
+
+            if self.current_video_url:
+                video_html = f"""<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body,html{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;}}video{{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;background:#000;}}</style></head><body><video src="{self.current_video_url}" autoplay loop controls playsinline></video></body></html>"""
+                self.web_view.setHtml(video_html, QUrl(self.current_video_url))
+                self.web_info.setText("🌐 Vídeo Online (Reprodução Direta)")
+                self.btn_cache_yt.setText("💾 Baixar para Offline")
+                self.btn_cache_yt.setEnabled(True)
+                self.stack.setCurrentWidget(self.web_page)
+                return
+
+            self.empty_label.setText("Este sinal não possui vídeo cadastrado.")
+            self.stack.setCurrentIndex(0)
+            return
+
+        # 3. Fallback sem WebEngine (ex: QMediaPlayer)
         if self.current_local_path and os.path.exists(self.current_local_path):
             self._play_file(self.current_local_path)
             return
 
-        # 2. Se for link do YouTube e tiver WebEngine: toca direto via Embed oficial!
-        yt_id = extract_youtube_id(self.current_video_url)
-        if yt_id and self.has_webengine:
-            embed_html = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta name="viewport" content="width=device-width, initial-scale=1">
-              <style>
-                body, html {{ margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }}
-                iframe {{ width: 100%; height: 100%; border: none; }}
-              </style>
-            </head>
-            <body>
-              <iframe src="https://www.youtube-nocookie.com/embed/{yt_id}?autoplay=1&loop=1&playlist={yt_id}&rel=0" 
-                      allow="autoplay; encrypted-media; fullscreen" 
-                      allowfullscreen>
-              </iframe>
-            </body>
-            </html>
-            """
-            self.web_view.setHtml(embed_html, QUrl("https://www.youtube-nocookie.com/"))
-            self.stack.setCurrentWidget(self.web_page)
-            return
-
-        # 3. Se não for YouTube ou não tiver WebEngine
         if self.current_video_url:
             self.load_label.setText("Vídeo disponível online. Deseja reproduzir?")
             self.btn_fetch.show()
@@ -239,14 +262,21 @@ class VideoPlayerWidget(QWidget):
         if not self.current_video_url:
             return
 
+        if self.has_webengine:
+            self.btn_cache_yt.setEnabled(False)
+            self.btn_cache_yt.setText("⏳ Baixando...")
         self.btn_fetch.hide()
         self.load_label.setText("Baixando vídeo original da internet...")
         self.progress_bar.show()
 
         output_dir = get_output_dir(None)
-        dest_filename = f"video_{abs(hash(self.current_video_url)) % 10000000}.mp4"
+        url_hash = hashlib.md5(self.current_video_url.encode("utf-8")).hexdigest()[:12]
+        dest_filename = f"video_{url_hash}.mp4"
         dest_path = os.path.join(output_dir, "media", dest_filename)
         os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+
+        if self.download_worker and self.download_worker.isRunning():
+            self.download_worker.wait()
 
         self.download_worker = VideoDownloadWorker(self.current_video_url, dest_path)
         self.download_worker.finished_download.connect(self._on_download_finished)
@@ -256,8 +286,16 @@ class VideoPlayerWidget(QWidget):
         self.progress_bar.hide()
         if success and os.path.exists(file_path):
             self.current_local_path = file_path
-            self._play_file(file_path)
+            if self.has_webengine:
+                self.web_info.setText("📁 Arquivo Local (Offline)")
+                self.btn_cache_yt.setText("✓ Vídeo Local")
+                self.btn_cache_yt.setEnabled(False)
+            else:
+                self._play_file(file_path)
         else:
+            if self.has_webengine:
+                self.btn_cache_yt.setText("⚠️ Falha ao Baixar")
+                self.btn_cache_yt.setEnabled(True)
             self.btn_fetch.show()
             self.load_label.setText("Falha ao baixar vídeo. Verifique sua conexão.")
 

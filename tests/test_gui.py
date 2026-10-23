@@ -28,7 +28,7 @@ def qapp():
     yield app
 
 
-def test_svg_viewer_widget(qapp):
+def test_svg_viewer_widget(qapp, tmp_path):
     from libras_anki.gui.widgets.svg_viewer import SvgViewerWidget
     viewer = SvgViewerWidget()
     viewer.show()
@@ -40,6 +40,19 @@ def test_svg_viewer_widget(qapp):
     assert not viewer.svg_widget.isHidden()
     assert viewer.placeholder_label.isHidden()
 
+    # Test nested SVG file (signpuddle style)
+    nested_svg = (
+        b'<svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="50" height="38" viewBox="0 0 50 38">\n'
+        b'  <text font-size="0">raw</text>\n'
+        b'  <svg x="10" y="20"><path d="M0 0 L10 10" /></svg>\n'
+        b'</svg>'
+    )
+    svg_file = tmp_path / "nested.svg"
+    svg_file.write_bytes(nested_svg)
+    viewer.load_svg_file(str(svg_file))
+    assert not viewer.svg_widget.isHidden()
+    assert viewer.placeholder_label.isHidden()
+
     viewer.clear()
     assert not viewer.placeholder_label.isHidden()
     assert viewer.svg_widget.isHidden()
@@ -47,6 +60,7 @@ def test_svg_viewer_widget(qapp):
 
 def test_video_player_widget(qapp, tmp_path):
     from libras_anki.gui.widgets.video_player import VideoPlayerWidget
+    from PyQt6.QtWidgets import QWidget
     player = VideoPlayerWidget()
     player.show()
     assert player.stack.currentIndex() == 0
@@ -55,17 +69,42 @@ def test_video_player_widget(qapp, tmp_path):
     player.load_signal_video("", "")
     assert player.stack.currentIndex() == 0
 
-    # Sinal com vídeo online
-    player.load_signal_video("https://youtube.com/watch?v=123", "")
+    # Fallback mode (sem webengine)
+    player.has_webengine = False
+    player.load_signal_video("https://dicionario.ines.gov.br/video.mp4", "")
     assert player.stack.currentIndex() == 1
     assert not player.btn_fetch.isHidden()
 
-    # Sinal com vídeo local
+    # Sinal com vídeo local em modo fallback
     fake_video = tmp_path / "fake.mp4"
     fake_video.write_bytes(b"dummy")
     with patch.object(player, '_play_file') as mock_play:
         player.load_signal_video("", str(fake_video))
         mock_play.assert_called_once_with(str(fake_video))
+
+    # Modo WebEngine (com mock de QWebEngineView)
+    player.has_webengine = True
+    player.web_page = QWidget()
+    player.web_view = MagicMock()
+    player.web_info = MagicMock()
+    player.btn_cache_yt = MagicMock()
+    player.stack.addWidget(player.web_page)
+
+    # Teste vídeo YouTube via WebEngine
+    player.load_signal_video("https://youtube.com/watch?v=12345678901", "")
+    assert player.stack.currentWidget() == player.web_page
+    assert "youtube-nocookie.com/embed/12345678901" in player.web_view.setHtml.call_args[0][0]
+
+    # Teste vídeo normal direto (INES / SpreadTheSign) via WebEngine
+    player.load_signal_video("https://media.spreadthesign.com/video/mp4/14/479149.mp4", "")
+    assert player.stack.currentWidget() == player.web_page
+    assert "<video src=" in player.web_view.setHtml.call_args[0][0]
+    assert "479149.mp4" in player.web_view.setHtml.call_args[0][0]
+
+    # Teste vídeo local via WebEngine
+    player.load_signal_video("", str(fake_video))
+    assert player.stack.currentWidget() == player.web_page
+    assert "<video src=" in player.web_view.setHtml.call_args[0][0]
 
     # Toggle loop
     player._toggle_loop(False)

@@ -7,7 +7,7 @@ import genanki
 import re
 import hashlib
 import concurrent.futures
-from libras_anki.utils import get_output_dir
+from libras_anki.utils import get_output_dir, sanitize_svg_for_qt
 from libras_anki.convert_videos import convert_video_to_gif
 from libras_anki import db
 from libras_anki import scrapers
@@ -256,7 +256,7 @@ def search_word_in_all_sources(word, source="Ambos"):
 def download_signwriting_svg(swu, dest_path):
     if not swu:
         return False
-    if os.path.exists(dest_path):
+    if os.path.exists(dest_path) and os.path.getsize(dest_path) > 0:
         return True
 
     headers = {"User-Agent": "LibrasAnki/1.0 (SignWriting Generator)"}
@@ -264,9 +264,10 @@ def download_signwriting_svg(swu, dest_path):
     try:
         r = requests.get(url, headers=headers, timeout=15)
         if r.status_code == 200 and r.content.lstrip().startswith(b"<svg"):
+            clean_content = sanitize_svg_for_qt(r.content)
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
             with open(dest_path, "wb") as f:
-                f.write(r.content)
+                f.write(clean_content)
             return True
     except Exception as e:
         print(f"  [SignWriting] Erro ao baixar SVG: {e}")
