@@ -276,28 +276,62 @@ def download_signwriting_svg(swu, dest_path):
 def download_video(video_url, dest_path):
     if not video_url:
         return False
-    if os.path.exists(dest_path):
+    if os.path.exists(dest_path) and os.path.getsize(dest_path) > 0:
         return True
 
     headers = {"User-Agent": "Mozilla/5.0"}
 
     if 'youtube.com' in video_url or 'youtu.be' in video_url:
+        import shutil
         import yt_dlp
-        opts = {
-            'format': 'bestvideo[ext=mp4]/best',
+
+        base_opts = {
+            'format': 'bestvideo[ext=mp4]/best[ext=mp4]/best',
             'outtmpl': dest_path,
             'quiet': True,
             'no_warnings': True,
+            'remote_components': {'ejs:github'},
         }
+
+        # Configurar runtime JavaScript para resolução de desafios (n-sig challenge)
+        node_bin = shutil.which("node") or os.path.expanduser("~/.nvm/versions/node/v24.21.0/bin/node")
+        if os.path.exists(node_bin):
+            base_opts['js_runtimes'] = {'node': {'path': node_bin}}
+        else:
+            base_opts['js_runtimes'] = {'node': {}}
+
+        # 1. Tentar com arquivo cookies.txt se fornecido no projeto
+        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        cookies_txt = os.path.join(root_dir, "cookies.txt")
+        if os.path.exists(cookies_txt):
+            base_opts['cookiefile'] = cookies_txt
+
+        # Tentar primeiro sem cookies de navegador
         try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
+            with yt_dlp.YoutubeDL(base_opts) as ydl:
                 ydl.download([video_url])
-            return os.path.exists(dest_path)
-        except Exception as e:
-            print(f"  [Erro] Falha ao baixar YouTube ({video_url}): {e}")
-            if os.path.exists(dest_path):
-                os.remove(dest_path)
-            return False
+            if os.path.exists(dest_path) and os.path.getsize(dest_path) > 0:
+                return True
+        except Exception:
+            pass
+
+        # 2. Se falhar (ex: 'Please sign in'), tentar automaticamente via cookies de navegadores instalados
+        for browser in ['firefox', 'chrome', 'chromium', 'brave', 'edge']:
+            try:
+                browser_opts = dict(base_opts)
+                browser_opts['cookiesfrombrowser'] = (browser, None, None, None)
+                with yt_dlp.YoutubeDL(browser_opts) as ydl:
+                    ydl.download([video_url])
+                if os.path.exists(dest_path) and os.path.getsize(dest_path) > 0:
+                    return True
+            except Exception:
+                continue
+
+        # Se todas as alternativas falharem
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        print(f"  [Erro] Falha ao baixar YouTube ({video_url}): O YouTube exigiu autenticação.")
+        return False
     else:
         try:
             r = requests.get(video_url, headers=headers, stream=True, timeout=20)
@@ -305,7 +339,7 @@ def download_video(video_url, dest_path):
             with open(dest_path, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
-            return os.path.exists(dest_path)
+            return os.path.exists(dest_path) and os.path.getsize(dest_path) > 0
         except Exception as e:
             print(f"  [Erro] Falha ao baixar link direto ({video_url}): {e}")
             if os.path.exists(dest_path):

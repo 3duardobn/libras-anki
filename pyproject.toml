@@ -23,6 +23,7 @@ dependencies = [
     "ffmpeg-python",
     "genanki",
     "PyQt6>=6.6.0",
+    "secretstorage>=3.3.0",
 ]
 
 [project.scripts]
