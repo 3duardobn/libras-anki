@@ -1,6 +1,13 @@
 """Janela principal da aplicação gráfica desktop (PyQt6)."""
 
 import sys
+
+# Importar QtWebEngineWidgets antes da criação de QApplication (requisito do Chromium/Qt)
+try:
+    from PyQt6.QtWebEngineWidgets import QWebEngineView
+except ImportError:
+    pass
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget,

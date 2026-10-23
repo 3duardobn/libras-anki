@@ -1,18 +1,29 @@
 """Testes automatizados da interface gráfica (PyQt6)."""
 
 import os
+
+# Configurar plataforma offscreen para testes de CI/CD sem servidor X11
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+# Importar QtWebEngineWidgets antes de qualquer criação de QApplication
+try:
+    from PyQt6.QtWebEngineWidgets import QWebEngineView
+except ImportError:
+    pass
+
 import pytest
 from unittest.mock import patch, MagicMock
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
-# Configurar plataforma offscreen para testes de CI/CD sem servidor X11
-os.environ["QT_QPA_PLATFORM"] = "offscreen"
-
 @pytest.fixture(scope="session")
 def qapp():
     app = QApplication.instance()
     if app is None:
+        try:
+            QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+        except Exception:
+            pass
         app = QApplication([])
     yield app
 
@@ -51,9 +62,10 @@ def test_video_player_widget(qapp, tmp_path):
 
     # Sinal com vídeo local
     fake_video = tmp_path / "fake.mp4"
-    fake_video.touch()
-    player.load_signal_video("", str(fake_video))
-    assert player.stack.currentIndex() == 2
+    fake_video.write_bytes(b"dummy")
+    with patch.object(player, '_play_file') as mock_play:
+        player.load_signal_video("", str(fake_video))
+        mock_play.assert_called_once_with(str(fake_video))
 
     # Toggle loop
     player._toggle_loop(False)
@@ -88,38 +100,34 @@ def test_search_view(qapp):
 def test_preview_view(qapp, tmp_path):
     from libras_anki.gui.views.preview_view import PreviewView
 
-    fake_svg = tmp_path / "sw_casa.svg"
-    fake_svg.write_text('<svg></svg>')
+    preview = PreviewView()
+    sinal_mock = {
+        "id": 9999,
+        "palavra": "CASA",
+        "fonte": "INES",
+        "descricao": "Edificação para habitação.",
+        "video_url": "https://youtube.com/watch?v=12345678901",
+        "video_file": "",
+        "source_link": "https://site.com"
+    }
 
-    with patch('os.path.exists', return_value=True):
-        preview = PreviewView()
-        sinal_mock = {
-            "id": 9999,
-            "palavra": "CASA",
-            "fonte": "INES",
-            "descricao": "Edificação para habitação.",
-            "video_url": "https://video.mp4",
-            "video_file": "",
-            "source_link": "https://site.com"
-        }
+    preview.set_signal(sinal_mock)
+    assert preview.title_label.text() == "CASA"
+    assert "Edificação para habitação" in preview.text_editor.toPlainText()
 
-        preview.set_signal(sinal_mock)
-        assert preview.title_label.text() == "CASA"
-        assert "Edificação para habitação" in preview.text_editor.toPlainText()
+    # Personalizar texto
+    preview.text_editor.setPlainText("Meu texto exclusivo do card!")
 
-        # Personalizar texto
-        preview.text_editor.setPlainText("Meu texto exclusivo do card!")
+    # Capturar sinal emitido
+    captured = []
+    preview.add_to_deck_requested.connect(lambda d: captured.append(d))
+    preview._on_add_to_deck()
 
-        # Capturar sinal emitido
-        captured = []
-        preview.add_to_deck_requested.connect(lambda d: captured.append(d))
-        preview._on_add_to_deck()
+    assert len(captured) == 1
+    assert captured[0]["palavra"] == "CASA"
+    assert captured[0]["texto_personalizado"] == "Meu texto exclusivo do card!"
 
-        assert len(captured) == 1
-        assert captured[0]["palavra"] == "CASA"
-        assert captured[0]["texto_personalizado"] == "Meu texto exclusivo do card!"
-
-        preview.clear()
+    preview.clear()
 
 
 def test_deck_view(qapp):
@@ -153,29 +161,27 @@ def test_deck_view(qapp):
 def test_main_window_integration(qapp):
     from libras_anki.gui.app import MainWindow
 
-    with patch('os.path.exists', return_value=True):
-        win = MainWindow()
+    win = MainWindow()
+    sinal_mock = {
+        "id": 1234,
+        "palavra": "AZUL",
+        "fonte": "RedeSurdos",
+        "descricao": "Cor do céu",
+        "video_url": "https://youtube.com/watch?v=12345678901",
+        "video_file": "",
+        "source_link": ""
+    }
+    # Simular seleção vinda da busca
+    win.search_view.signal_selected.emit(sinal_mock)
+    assert win.preview_view.title_label.text() == "AZUL"
 
-        sinal_mock = {
-            "id": 1234,
-            "palavra": "AZUL",
-            "fonte": "RedeSurdos",
-            "descricao": "Cor do céu",
-            "video_url": "https://vid.mp4",
-            "video_file": "",
-            "source_link": ""
-        }
-        # Simular seleção vinda da busca
-        win.search_view.signal_selected.emit(sinal_mock)
-        assert win.preview_view.title_label.text() == "AZUL"
+    # Simular clique em adicionar card
+    win.preview_view.text_editor.setPlainText("Nota de estudo de azul")
+    win.preview_view._on_add_to_deck()
 
-        # Simular clique em adicionar card
-        win.preview_view.text_editor.setPlainText("Nota de estudo de azul")
-        win.preview_view._on_add_to_deck()
+    assert len(win.deck_view.staged_cards) == 1
+    assert win.deck_view.staged_cards[0]["palavra"] == "AZUL"
+    assert win.deck_view.staged_cards[0]["texto_personalizado"] == "Nota de estudo de azul"
 
-        assert len(win.deck_view.staged_cards) == 1
-        assert win.deck_view.staged_cards[0]["palavra"] == "AZUL"
-        assert win.deck_view.staged_cards[0]["texto_personalizado"] == "Nota de estudo de azul"
-
-        win.preview_view.clear()
-        win.close()
+    win.preview_view.clear()
+    win.close()
