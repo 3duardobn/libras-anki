@@ -43,6 +43,7 @@ def menu():
         print("3. Buscar Palavra (Teste de Raspagem/SQLite)")
         print("4. Gerar Deck Anki Completo (por fonte)")
         print("5. Gerar Deck Anki Personalizado (CSV ou Lista)")
+        print("6. Abrir Interface Gráfica Desktop (PyQt6)")
         print("0. Sair")
         print("="*50)
 
@@ -155,6 +156,11 @@ def menu():
 
             dicionario.build_deck(palavras, source=fonte, deck_name=deck_name, filename=filename)
 
+        elif escolha == '6':
+            from libras_anki.gui.app import main as gui_main
+            gui_main()
+            break
+
         else:
             print("Opção inválida! Tente novamente.")
 
@@ -170,6 +176,7 @@ def main():
         parser = argparse.ArgumentParser(
             description="Ferramentas Libras - Gerador de Deck Anki (LLM & Humano)"
         )
+        parser.add_argument("--gui", action="store_true", help="Abre a interface gráfica desktop (PyQt6).")
         parser.add_argument("--init-db", action="store_true", help="Inicializa o banco de dados e importa bases unificadas (sinais + SignWriting).")
         parser.add_argument("--force-reimport", action="store_true", help="Força a reimportação das bases de dados em data/.")
         parser.add_argument("--import-ufc-online", action="store_true", help="Importa UFC completo do site online.")
@@ -182,6 +189,11 @@ def main():
         parser.add_argument("--sql", type=str, help="Executa uma instrução SQL no banco SQLite.")
 
         args = parser.parse_args()
+
+        if args.gui:
+            from libras_anki.gui.app import main as gui_main
+            gui_main()
+            sys.exit(0)
 
         if args.sql:
             print("[LLM-Mode] Executando instrução SQL no banco...")

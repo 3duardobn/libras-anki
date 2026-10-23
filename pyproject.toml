@@ -22,10 +22,12 @@ dependencies = [
     "yt-dlp",
     "ffmpeg-python",
     "genanki",
+    "PyQt6>=6.6.0",
 ]
 
 [project.scripts]
 libras-anki = "libras_anki.cli:main"
+libras-anki-gui = "libras_anki.gui.app:main"
 
 [project.optional-dependencies]
 test = [

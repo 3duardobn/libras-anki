@@ -12,7 +12,13 @@ Licença: **GPLv3 or later** (ver `LICENSE`).
 
 ```
 src/libras_anki/
-  cli.py            # Entrypoint CLI (modo interativo e LLM-mode)
+  gui/              # Interface gráfica Desktop em PyQt6 (UI/UX 100% offline-first)
+    app.py          # Janela principal MainWindow
+    theme.py        # Tema escuro moderno QSS
+    views/          # Painéis: search_view, preview_view, deck_view
+    widgets/        # Componentes: video_player (QtMultimedia), svg_viewer (QtSvg)
+    workers/        # Threads de background: deck_builder_worker
+  cli.py            # Entrypoint CLI (modo interativo, LLM-mode e --gui)
   dicionario.py     # Lógica principal: busca, download, conversão, build_deck()
   db.py             # SQLite: schema, CRUD, normalização, base_palavra, signwriting
   scrapers.py       # Scrapers por fonte (RedeSurdos, UFV, UFF, SpreadTheSign, CCB, Economia, FESAI, PIBIC)
@@ -22,23 +28,35 @@ src/libras_anki/
 data/               # BASES LOCAIS: libras.db (26.928 sinais) e signpuddle.db (39.760 termos SWU)
 tests/
   test_dicionario.py
+  test_gui.py
   test_utils.py
 output/             # GERADO, não versionado: libras.db, media/, media_converted/, *.apkg
 ```
 
 ## Executar
 
+### Interface Gráfica (Desktop Qt)
+
+```bash
+./venv-rede-surdos/bin/libras-anki-gui
+# ou
+./venv-rede-surdos/bin/libras-anki --gui
+```
+
+### Linha de Comando (CLI)
+
 ```bash
 source venv-rede-surdos/bin/activate
 ./venv-rede-surdos/bin/libras-anki [opções]
 ```
 
-Sem argumentos → modo interativo. Com qualquer argumento → **LLM-mode** (não-interativo).
+Sem argumentos → menu interativo CLI. Com argumentos → **LLM-mode** (não-interativo).
 
 ## Parâmetros da CLI
 
 | Argumento | Tipo | Descrição |
 | :--- | :--- | :--- |
+| `--gui` | Flag | Abre a interface gráfica desktop (PyQt6). |
 | `--init-db` | Flag | Inicializa o banco SQLite, aplica migrações e importa bases de `data/` (`libras.db` e `signpuddle.db`). **Sempre rodar antes do primeiro uso ou após atualizar o código.** |
 | `--force-reimport` | Flag | Força a reimportação das bases de dados locais em `data/`. |
 | `--import-ufc-online` | Flag | Varre a API online da Rede de Surdos UFC e importa todas as postagens. |
