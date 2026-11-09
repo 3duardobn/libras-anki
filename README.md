@@ -1,5 +1,8 @@
 # Libras Anki Generator
 
+[![0rwx: x](https://img.shields.io/badge/0rwx-x%20%7C%20execute-critical?style=flat-square)](https://0rwx.com)
+
+
 Gerador de decks do [Anki](https://apps.ankiweb.net/) para estudo de **Libras** (Língua Brasileira de Sinais). Busca sinais em bases integradas e dicionários online, converte vídeos para **GIFs animados**, adiciona enriquecimento automático com escrita em **SignWriting (SWU)** e empacota tudo em arquivos `.apkg` prontos para importação.
 
 Inclui uma **interface gráfica desktop completa (Libras Anki Studio)** em PyQt6 e uma **linha de comando (CLI)** rápida e voltada para automações.
@@ -208,6 +211,14 @@ Para executar a suíte completa de testes automatizados:
 ```bash
 pytest tests/ -q
 ```
+
+---
+
+## Transparência de IA (0rwx: x)
+
+Este projeto adota a classificação do **[Framework 0rwx](https://0rwx.com/)** no nível **x (Execute / "I curate")**.
+
+Desenvolvido em fluxo *vibe coding* com assistência de agentes de IA para geração de rotinas, extração de mídias e montagem de decks. O mantenedor atua na curadoria, revisão linguística e teste dos pacotes gerados no Anki. Veja detalhes em [0rwx.md](0rwx.md).
 
 ---
 
